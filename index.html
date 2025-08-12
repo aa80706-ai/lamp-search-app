@@ -27,70 +27,117 @@
                 type="text"
                 placeholder="例如: 390006"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200"
+                disabled
             />
             <button
                 id="searchButton"
-                class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-200 shadow-md"
+                class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-200 shadow-md disabled:bg-blue-300"
+                disabled
             >
                 搜尋
             </button>
         </div>
 
-        <!-- 搜尋結果區塊 -->
-        <div id="result" class="mt-6">
-            <!-- 結果將在這裡顯示 -->
+        <!-- 搜尋結果與狀態區塊 -->
+        <div id="result" class="mt-6 text-center">
+            <div id="statusMessage" class="text-gray-500">正在載入試算表資料，請稍候...</div>
         </div>
-
     </div>
 
     <script>
-        // 路燈資料，根據你提供的試算表內容硬編碼在此。
-        // 這是為了在沒有後端或 API 的情況下實現搜尋功能。
-        const lampData = [
-            { "路燈編號": "390006", "座標": "25.114298, 121.458524" },
-            { "路燈編號": "390007", "座標": "25.114512, 121.458428" },
-            { "路燈編號": "390008", "座標": "25.114674, 121.458319" },
-            { "路燈編號": "390009", "座標": "25.11488, 121.458212" },
-            { "路燈編號": "390010", "座標": "25.115049, 121.458097" },
-            { "路燈編號": "390011", "座標": "25.115263, 121.458002" },
-            { "路燈編號": "390012", "座標": "25.115516, 121.457858" },
-            { "路燈編號": "390013", "座標": "25.115682, 121.457726" },
-            { "路燈編號": "390014", "座標": "25.115858, 121.457585" },
-            { "路燈編號": "390015", "座標": "25.116035, 121.457434" },
-            { "路燈編號": "390016", "座標": "25.116239, 121.457297" },
-            { "路燈編號": "390017", "座標": "25.116452, 121.457161" },
-            { "路燈編號": "390018", "座標": "25.116646, 121.457008" },
-            { "路燈編號": "390019", "座標": "25.11677, 121.456885" },
-            { "路燈編號": "390020", "座標": "25.116999, 121.456743" },
-        ];
+        // 這是從 Google 試算表匯出為 CSV 的公開連結。
+        // 它會自動抓取你提供的試算表內容。
+        const spreadsheetUrl = "https://docs.google.com/spreadsheets/d/1_8Hmm1mrdZgm7DUMw6w7ctDCj0WHORbG/export?format=csv&gid=689333817";
+        let lampData = [];
 
         // 獲取 DOM 元素
         const searchInput = document.getElementById('searchInput');
         const searchButton = document.getElementById('searchButton');
         const resultDiv = document.getElementById('result');
+        const statusMessage = document.getElementById('statusMessage');
 
-        // 搜尋功能函數
-        function searchLamp() {
-            // 清空先前的結果
-            resultDiv.innerHTML = '';
+        /**
+         * 讀取並解析 Google 試算表中的資料。
+         * 成功後，將資料存入 lampData 陣列。
+         */
+        async function fetchAndParseData() {
+            try {
+                const response = await fetch(spreadsheetUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP 錯誤! 狀態碼: ${response.status}`);
+                }
+                const csvText = await response.text();
+                parseCsvData(csvText);
+
+                // 資料載入成功後，啟用輸入框和按鈕
+                searchInput.disabled = false;
+                searchButton.disabled = false;
+                statusMessage.textContent = "資料載入完成，可以開始搜尋了！";
+                statusMessage.className = "text-green-600";
+
+            } catch (error) {
+                console.error("載入試算表資料時發生錯誤:", error);
+                statusMessage.textContent = "載入試算表資料失敗，請檢查連結或網路連線。";
+                statusMessage.className = "text-red-500";
+            }
+        }
+
+        /**
+         * 將 CSV 格式的文字解析為 JavaScript 物件陣列。
+         *
+         * @param {string} csvText - 從試算表取得的 CSV 格式文字
+         */
+        function parseCsvData(csvText) {
+            const lines = csvText.split('\n');
+            // 取得標題列，用來找到「路燈編號」和「座標」的索引
+            const headers = lines[0].split(',');
+            const lampIdIndex = headers.indexOf('路燈編號');
+            const coordinatesIndex = headers.indexOf('座標');
             
+            // 檢查是否找到必要的欄位
+            if (lampIdIndex === -1 || coordinatesIndex === -1) {
+                throw new Error('試算表中未找到「路燈編號」或「座標」欄位。');
+            }
+
+            // 遍歷每一行（從第二行開始，因為第一行是標題）
+            for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split(',');
+                // 確保該行有足夠的資料
+                if (parts.length > Math.max(lampIdIndex, coordinatesIndex)) {
+                    // 將資料推入 lampData 陣列
+                    lampData.push({
+                        "路燈編號": parts[lampIdIndex].trim(),
+                        "座標": parts[coordinatesIndex].trim()
+                    });
+                }
+            }
+        }
+
+        /**
+         * 搜尋功能函數。根據使用者輸入尋找路燈座標並產生地圖連結。
+         */
+        function searchLamp() {
+            // 清空先前的結果和狀態訊息
+            resultDiv.innerHTML = '';
+            statusMessage.textContent = "";
+
             // 獲取使用者輸入並去除前後空格
             const query = searchInput.value.trim();
 
             // 如果輸入為空，顯示提示訊息
             if (!query) {
-                resultDiv.innerHTML = '<p class="text-red-500 text-center">請輸入有效的路燈編號。</p>';
+                statusMessage.textContent = '請輸入有效的路燈編號。';
+                statusMessage.className = "text-red-500";
                 return;
             }
 
             // 在資料中尋找匹配的路燈編號
             const foundLamp = lampData.find(lamp => lamp['路燈編號'] === query);
 
-            // 如果找到匹配項
             if (foundLamp) {
                 // 從找到的資料中獲取座標
                 const coordinates = foundLamp['座標'];
-                // Google 地圖搜尋連結格式：https://www.google.com/maps/search/?api=1&query=緯度,經度
+                // Google 地圖搜尋連結格式
                 const mapUrl = `https://www.google.com/maps/search/?api=1&query=${coordinates}`;
 
                 // 創建一個新的連結元素
@@ -100,11 +147,11 @@
                 link.textContent = `點擊前往路燈編號 ${query} 的地圖位置`;
                 link.className = 'block text-center text-lg font-semibold text-blue-600 hover:text-blue-800 transition duration-200';
 
-                // 將連結添加到結果區塊中
                 resultDiv.appendChild(link);
             } else {
                 // 如果沒有找到，顯示錯誤訊息
-                resultDiv.innerHTML = `<p class="text-red-500 text-center">找不到編號為 ${query} 的路燈。</p>`;
+                statusMessage.textContent = `找不到編號為 ${query} 的路燈。`;
+                statusMessage.className = "text-red-500";
             }
         }
 
@@ -117,6 +164,9 @@
                 searchLamp();
             }
         });
+
+        // 網頁載入後立即執行，開始抓取試算表資料
+        window.addEventListener('load', fetchAndParseData);
     </script>
 </body>
 </html>
