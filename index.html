@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>路燈編號地圖搜尋</title>
+    <!-- 引入 Tailwind CSS 腳本，用於快速建立美觀的介面 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 使用 Inter 字體以獲得更好的可讀性 */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+        <!-- 標題 -->
+        <h1 class="text-3xl font-bold mb-4 text-center text-gray-800">路燈地圖搜尋</h1>
+        <p class="text-gray-600 mb-6 text-center">請輸入路燈編號以尋找其地圖位置。</p>
+
+        <!-- 輸入與按鈕區塊 -->
+        <div class="flex flex-col space-y-4">
+            <input
+                id="searchInput"
+                type="text"
+                placeholder="例如: 390006"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200"
+            />
+            <button
+                id="searchButton"
+                class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-200 shadow-md"
+            >
+                搜尋
+            </button>
+        </div>
+
+        <!-- 搜尋結果區塊 -->
+        <div id="result" class="mt-6">
+            <!-- 結果將在這裡顯示 -->
+        </div>
+
+    </div>
+
+    <script>
+        // 路燈資料，根據你提供的試算表內容硬編碼在此。
+        // 這是為了在沒有後端或 API 的情況下實現搜尋功能。
+        const lampData = [
+            { "路燈編號": "390006", "座標": "25.114298, 121.458524" },
+            { "路燈編號": "390007", "座標": "25.114512, 121.458428" },
+            { "路燈編號": "390008", "座標": "25.114674, 121.458319" },
+            { "路燈編號": "390009", "座標": "25.11488, 121.458212" },
+            { "路燈編號": "390010", "座標": "25.115049, 121.458097" },
+            { "路燈編號": "390011", "座標": "25.115263, 121.458002" },
+            { "路燈編號": "390012", "座標": "25.115516, 121.457858" },
+            { "路燈編號": "390013", "座標": "25.115682, 121.457726" },
+            { "路燈編號": "390014", "座標": "25.115858, 121.457585" },
+            { "路燈編號": "390015", "座標": "25.116035, 121.457434" },
+            { "路燈編號": "390016", "座標": "25.116239, 121.457297" },
+            { "路燈編號": "390017", "座標": "25.116452, 121.457161" },
+            { "路燈編號": "390018", "座標": "25.116646, 121.457008" },
+            { "路燈編號": "390019", "座標": "25.11677, 121.456885" },
+            { "路燈編號": "390020", "座標": "25.116999, 121.456743" },
+        ];
+
+        // 獲取 DOM 元素
+        const searchInput = document.getElementById('searchInput');
+        const searchButton = document.getElementById('searchButton');
+        const resultDiv = document.getElementById('result');
+
+        // 搜尋功能函數
+        function searchLamp() {
+            // 清空先前的結果
+            resultDiv.innerHTML = '';
+            
+            // 獲取使用者輸入並去除前後空格
+            const query = searchInput.value.trim();
+
+            // 如果輸入為空，顯示提示訊息
+            if (!query) {
+                resultDiv.innerHTML = '<p class="text-red-500 text-center">請輸入有效的路燈編號。</p>';
+                return;
+            }
+
+            // 在資料中尋找匹配的路燈編號
+            const foundLamp = lampData.find(lamp => lamp['路燈編號'] === query);
+
+            // 如果找到匹配項
+            if (foundLamp) {
+                // 從找到的資料中獲取座標
+                const coordinates = foundLamp['座標'];
+                // Google 地圖搜尋連結格式：https://www.google.com/maps/search/?api=1&query=緯度,經度
+                const mapUrl = `https://www.google.com/maps/search/?api=1&query=${coordinates}`;
+
+                // 創建一個新的連結元素
+                const link = document.createElement('a');
+                link.href = mapUrl;
+                link.target = '_blank'; // 在新視窗中開啟連結
+                link.textContent = `點擊前往路燈編號 ${query} 的地圖位置`;
+                link.className = 'block text-center text-lg font-semibold text-blue-600 hover:text-blue-800 transition duration-200';
+
+                // 將連結添加到結果區塊中
+                resultDiv.appendChild(link);
+            } else {
+                // 如果沒有找到，顯示錯誤訊息
+                resultDiv.innerHTML = `<p class="text-red-500 text-center">找不到編號為 ${query} 的路燈。</p>`;
+            }
+        }
+
+        // 為按鈕添加點擊事件監聽器
+        searchButton.addEventListener('click', searchLamp);
+
+        // 允許使用者按下 Enter 鍵進行搜尋
+        searchInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                searchLamp();
+            }
+        });
+    </script>
+</body>
+</html>
