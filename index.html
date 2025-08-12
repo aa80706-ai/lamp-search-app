@@ -1,172 +1,114 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>路燈編號地圖搜尋</title>
-    <!-- 引入 Tailwind CSS 腳本，用於快速建立美觀的介面 -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* 使用 Inter 字體以獲得更好的可讀性 */
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>路燈編號查詢</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans TC',Helvetica,Arial;padding:20px;max-width:900px;margin:auto}
+    input,button{font-size:16px;padding:8px;margin:4px}
+    .result{border:1px solid #ddd;padding:10px;border-radius:8px;margin:8px 0}
+    .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    label{font-size:14px}
+  </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+<body>
+  <h1>路燈編號查詢</h1>
+  <div class="controls">
+    <label>搜尋路燈編號: <br/><input id="query" placeholder="輸入完整路燈編號" style="width:300px"></label>
+    <button id="searchBtn">搜尋</button>
+  </div>
+  <div id="results"></div>
 
-    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-        <!-- 標題 -->
-        <h1 class="text-3xl font-bold mb-4 text-center text-gray-800">路燈地圖搜尋</h1>
-        <p class="text-gray-600 mb-6 text-center">請輸入路燈編號以尋找其地圖位置。</p>
+<script>
+function parseCSV(text){
+  const rows = [];
+  let cur = [];
+  let field = '';
+  let i = 0;
+  let inQuotes = false;
+  while(i < text.length){
+    const ch = text[i];
+    if(inQuotes){
+      if(ch === '"'){
+        if(text[i+1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      } else { field += ch; i++; continue; }
+    }
+    if(ch === '"') { inQuotes = true; i++; continue; }
+    if(ch === ',') { cur.push(field); field = ''; i++; continue; }
+    if(ch === '\r') { i++; continue; }
+    if(ch === '\n') { cur.push(field); rows.push(cur); cur = []; field = ''; i++; continue; }
+    field += ch; i++;
+  }
+  if(field !== '' || cur.length>0){ cur.push(field); rows.push(cur); }
+  return rows;
+}
 
-        <!-- 輸入與按鈕區塊 -->
-        <div class="flex flex-col space-y-4">
-            <input
-                id="searchInput"
-                type="text"
-                placeholder="例如: 390006"
-                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200"
-                disabled
-            />
-            <button
-                id="searchButton"
-                class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-200 shadow-md disabled:bg-blue-300"
-                disabled
-            >
-                搜尋
-            </button>
-        </div>
+let table = null;
 
-        <!-- 搜尋結果與狀態區塊 -->
-        <div id="result" class="mt-6 text-center">
-            <div id="statusMessage" class="text-gray-500">正在載入試算表資料，請稍候...</div>
-        </div>
-    </div>
+async function loadSheet(){
+  const sheetId = '1_8Hmm1mrdZgm7DUMw6w7ctDCj0WHORbG';
+  const gid = '689333817';
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+  try{
+    const res = await fetch(csvUrl);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const txt = await res.text();
+    table = parseCSV(txt);
+  }catch(err){
+    document.getElementById('results').innerHTML = '<div class="result">載入失敗：' + err + '</div>';
+    console.error(err);
+  }
+}
 
-    <script>
-        // 這是從 Google 試算表匯出為 CSV 的公開連結。
-        // 它會自動抓取你提供的試算表內容。
-        const spreadsheetUrl = "https://docs.google.com/spreadsheets/d/1_8Hmm1mrdZgm7DUMw6w7ctDCj0WHORbG/export?format=csv&gid=689333817";
-        let lampData = [];
+function findByLampId(q){
+  if(!table) return [];
+  const results = [];
+  const idIdx = 1, lonIdx = 7, latIdx = 8;
+  for(let r = 0; r < table.length; r++){
+    const row = table[r];
+    const id = (row[idIdx] || '').toString().trim();
+    const lon = (row[lonIdx] || '').toString().trim();
+    const lat = (row[latIdx] || '').toString().trim();
+    if(id === q) results.push({rowIndex: r, id, lon, lat});
+  }
+  return results;
+}
 
-        // 獲取 DOM 元素
-        const searchInput = document.getElementById('searchInput');
-        const searchButton = document.getElementById('searchButton');
-        const resultDiv = document.getElementById('result');
-        const statusMessage = document.getElementById('statusMessage');
+function makeMapsLink(lat, lon){
+  if(!lat || !lon) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat + ',' + lon)}`;
+}
 
-        /**
-         * 讀取並解析 Google 試算表中的資料。
-         * 成功後，將資料存入 lampData 陣列。
-         */
-        async function fetchAndParseData() {
-            try {
-                const response = await fetch(spreadsheetUrl);
-                if (!response.ok) {
-                    throw new Error(`HTTP 錯誤! 狀態碼: ${response.status}`);
-                }
-                const csvText = await response.text();
-                parseCsvData(csvText);
+function showResults(items){
+  const out = document.getElementById('results');
+  if(!items || items.length === 0){ out.innerHTML = '<div class="result">找不到結果。</div>'; return; }
+  out.innerHTML = '';
+  for(const it of items){
+    const div = document.createElement('div'); div.className = 'result';
+    let html = `<strong>路燈編號:</strong> ${it.id} <br/><small>表列第 ${it.rowIndex+1} 列</small><br/>`;
+    html += `<strong>緯度:</strong> ${it.lat || '<em>空白</em>'} <br/>`;
+    html += `<strong>經度:</strong> ${it.lon || '<em>空白</em>'} <br/>`;
+    if(it.lat && it.lon){
+      const link = makeMapsLink(it.lat, it.lon);
+      html += `<p><a target="_blank" rel="noopener" href="${link}">在 Google Maps 中開啟</a></p>`;
+    } else {
+      html += `<p style="color:#c00">無效或缺少座標</p>`;
+    }
+    div.innerHTML = html;
+    out.appendChild(div);
+  }
+}
 
-                // 資料載入成功後，啟用輸入框和按鈕
-                searchInput.disabled = false;
-                searchButton.disabled = false;
-                statusMessage.textContent = "資料載入完成，可以開始搜尋了！";
-                statusMessage.className = "text-green-600";
+document.getElementById('searchBtn').addEventListener('click', ()=>{
+  const q = document.getElementById('query').value.trim();
+  if(!q){ alert('請輸入要搜尋的路燈編號'); return; }
+  const items = findByLampId(q);
+  showResults(items);
+});
 
-            } catch (error) {
-                console.error("載入試算表資料時發生錯誤:", error);
-                statusMessage.textContent = "載入試算表資料失敗，請檢查連結或網路連線。";
-                statusMessage.className = "text-red-500";
-            }
-        }
-
-        /**
-         * 將 CSV 格式的文字解析為 JavaScript 物件陣列。
-         *
-         * @param {string} csvText - 從試算表取得的 CSV 格式文字
-         */
-        function parseCsvData(csvText) {
-            const lines = csvText.split('\n');
-            // 取得標題列，用來找到「路燈編號」和「座標」的索引
-            const headers = lines[0].split(',');
-            const lampIdIndex = headers.indexOf('路燈編號');
-            const coordinatesIndex = headers.indexOf('座標');
-            
-            // 檢查是否找到必要的欄位
-            if (lampIdIndex === -1 || coordinatesIndex === -1) {
-                throw new Error('試算表中未找到「路燈編號」或「座標」欄位。');
-            }
-
-            // 遍歷每一行（從第二行開始，因為第一行是標題）
-            for (let i = 1; i < lines.length; i++) {
-                const parts = lines[i].split(',');
-                // 確保該行有足夠的資料
-                if (parts.length > Math.max(lampIdIndex, coordinatesIndex)) {
-                    // 將資料推入 lampData 陣列
-                    lampData.push({
-                        "路燈編號": parts[lampIdIndex].trim(),
-                        "座標": parts[coordinatesIndex].trim()
-                    });
-                }
-            }
-        }
-
-        /**
-         * 搜尋功能函數。根據使用者輸入尋找路燈座標並產生地圖連結。
-         */
-        function searchLamp() {
-            // 清空先前的結果和狀態訊息
-            resultDiv.innerHTML = '';
-            statusMessage.textContent = "";
-
-            // 獲取使用者輸入並去除前後空格
-            const query = searchInput.value.trim();
-
-            // 如果輸入為空，顯示提示訊息
-            if (!query) {
-                statusMessage.textContent = '請輸入有效的路燈編號。';
-                statusMessage.className = "text-red-500";
-                return;
-            }
-
-            // 在資料中尋找匹配的路燈編號
-            const foundLamp = lampData.find(lamp => lamp['路燈編號'] === query);
-
-            if (foundLamp) {
-                // 從找到的資料中獲取座標
-                const coordinates = foundLamp['座標'];
-                // Google 地圖搜尋連結格式
-                const mapUrl = `https://www.google.com/maps/search/?api=1&query=${coordinates}`;
-
-                // 創建一個新的連結元素
-                const link = document.createElement('a');
-                link.href = mapUrl;
-                link.target = '_blank'; // 在新視窗中開啟連結
-                link.textContent = `點擊前往路燈編號 ${query} 的地圖位置`;
-                link.className = 'block text-center text-lg font-semibold text-blue-600 hover:text-blue-800 transition duration-200';
-
-                resultDiv.appendChild(link);
-            } else {
-                // 如果沒有找到，顯示錯誤訊息
-                statusMessage.textContent = `找不到編號為 ${query} 的路燈。`;
-                statusMessage.className = "text-red-500";
-            }
-        }
-
-        // 為按鈕添加點擊事件監聽器
-        searchButton.addEventListener('click', searchLamp);
-
-        // 允許使用者按下 Enter 鍵進行搜尋
-        searchInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                searchLamp();
-            }
-        });
-
-        // 網頁載入後立即執行，開始抓取試算表資料
-        window.addEventListener('load', fetchAndParseData);
-    </script>
+loadSheet();
+</script>
 </body>
 </html>
